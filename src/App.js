@@ -1,41 +1,27 @@
 import React, { Component } from 'react';
-import axios  from 'axios';
+import { Organization } from './component/Organization'
+import { 
+  getIssuesOfRepository, 
+  resolveIssuesQuery,
+  addStarToRepository,
+  resolveAddStarMutation,
+  removeStarToRepository,
+  resolveRemoveStarMutation
+} from './graphql/AxiosRequest'
 
 import './App.css';
 
 const title = 'React Graphql Github Client';
 
-const axiosGitHubGraphQL = axios.create({
-  baseURL: 'https://api.github.com/graphql',
-  headers: {
-    Authorization: `bearer ${
-      process.env.REACT_APP_GITHUB_PERSONAL_ACCESS_TOKEN
-    }`,
-  },
-});
-
-const GET_REPOSITORY_OF_ORGANIZATION = `
-  {
-    organization(login: "the-road-to-learn-react") {
-      name
-      url
-      repository(name: "the-road-to-learn-react") {
-        name
-        url
-      }
-    }
-  }
-`;
-
 class App extends Component {
   state={
-    path: 'the-road-to-lear-react/the-road-to-learn-react',
+    path: 'the-road-to-learn-react/the-road-to-learn-react',
     organization: null,
     errors: null,
   };
 
   componentDidMount() {
-    this.onFetchFromGitHub();
+    this.onFetchFromGitHub(this.state.path);
   }
 
   onChange = event => {
@@ -44,25 +30,35 @@ class App extends Component {
 
   onSubmit = event => {
     // fetch data
-
+    this.onFetchFromGitHub(this.state.path);
     event.preventDefault();
   };
 
-  onFetchFromGitHub = () => {
-    axiosGitHubGraphQL
-      .post('', { query: GET_REPOSITORY_OF_ORGANIZATION })
-      .then(result => {
-        console.log(result.data);
-        this.setState(() => ({
-          organization: result.data.data.organization,
-          errors: result.data.errors,
-        }));
-      }
+  onFetchFromGitHub = (path, cursor) => {
+    getIssuesOfRepository(path, cursor).then(queryResult =>
+      this.setState(resolveIssuesQuery(queryResult, cursor)),
+    )
+  }
+
+  onFetchMoreIssues = () => {
+    const { endCursor } = this.state.organization.repository.issues.pageInfo;
+    this.onFetchFromGitHub(this.state.path, endCursor)
+  }
+
+  onStarRespository = (repositoryId, viewerHasStarred) => {
+    if(!viewerHasStarred) { 
+      addStarToRepository(repositoryId).then(mutationResult => 
+        this.setState(resolveAddStarMutation(mutationResult))
       );
+    } else {
+      removeStarToRepository(repositoryId).then(mutationResult =>
+        this.setState(resolveRemoveStarMutation(mutationResult))
+      );
+    }
   }
 
   render() {
-    const { path, organization, errors } = this.state;
+    const { path, organization, errors } = this.state;    
 
     return (
       <div>
@@ -85,7 +81,12 @@ class App extends Component {
         <hr />
 
         { organization ? (
-          <Organization organization={organization} errors={errors} />
+          <Organization 
+            organization={organization} 
+            errors={errors} 
+            onFetchMoreIssues={this.onFetchMoreIssues} 
+            onStarRespository={this.onStarRespository} 
+          />
         ) : (
           <p>No information yet ...</p>
         )}
@@ -94,37 +95,5 @@ class App extends Component {
     );
   }
 }
-
-const Organization = ({ organization, errors }) => {
-  if (errors) {
-    return(
-      <p>
-        <strong>Something went wrong:</strong>
-        {errors.map(error => error.message).join(' ')}
-      </p>
-    );
-  }
-
-  console.log(organization.repository.url);
-
-  return (
-    <div>
-      <p>
-        <strong>Issues from Organization:</strong>
-        <a href={organization.url}>{organization.name}</a>
-      </p>
-      <Repository repository={organization.repository} />
-    </div>
-  );
-};
-
-const Repository = ({repository}) => (
-  <div>
-    <p>
-      <strong>In Repository:</strong>
-      <a href={repository.url}>{repository.name}</a>
-    </p>
-  </div>
-);
 
 export default App;
